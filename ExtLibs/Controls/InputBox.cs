@@ -169,7 +169,7 @@ namespace MissionPlanner.Controls
 
             Console.WriteLine("Input Box " + System.Threading.Thread.CurrentThread.Name);
 
-            form.ShowDialog();
+            DialogOwner.ShowDialog(form);
 
             Console.WriteLine("Input Box 2 " + System.Threading.Thread.CurrentThread.Name);
 

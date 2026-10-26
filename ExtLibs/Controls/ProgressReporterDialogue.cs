@@ -54,7 +54,7 @@ namespace MissionPlanner.Controls
             if ((t != null))
                 this.Height += 25;
 
-            this.ShowDialog();
+            DialogOwner.ShowDialog(this);
         }
 
         private void RunBackgroundOperation(object o)

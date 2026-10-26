@@ -231,7 +231,7 @@ namespace MissionPlanner.MsgBox
                 {
                 }
 
-                DialogResult test = msgBoxFrm.ShowDialog();
+                DialogResult test = DialogOwner.ShowDialog(msgBoxFrm);
 
                 answer = _state;
             }
