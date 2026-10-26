@@ -55,6 +55,21 @@ jobs:
             version.txt
             ChangeLog.txt
 
+      # Aerostar: every push to the aerostar branch of the Aerostar fork publishes release "aerostar-latest", which the
+      # updater in App.config points at (Aerostar installs update to the Aerostar build, never the public one).
+      - uses: "marvinpinto/action-automatic-releases@v1.2.1"
+        if: ${{ github.repository == 'AerostarDynamics/MissionPlanner-Aerostar' && github.ref == 'refs/heads/aerostar' }}
+        with:
+          repo_token: "${{ secrets.GITHUB_TOKEN }}"
+          automatic_release_tag: "aerostar-latest"
+          prerelease: false
+          title: "Aerostar Mission Planner (latest)"
+          files: |
+            MissionPlannerBeta.zip
+            checksums.txt
+            version.txt
+            ChangeLog.txt
+
 
   buildDebug:
     name: Build Debug

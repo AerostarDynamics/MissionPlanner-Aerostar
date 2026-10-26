@@ -211,7 +211,9 @@ namespace MissionPlanner
                 return;
             }
 
-            name = "Mission Planner";
+            // Aerostar: name built in; logo.txt may still rename the program but no longer switches the settings file
+            // (a missing logo.txt used to bring back plain Mission Planner settings). See Aerostar\AerostarBranding.cs.
+            name = MissionPlanner.Aerostar.AerostarBranding.Name;
 
             try
             {
@@ -219,12 +221,14 @@ namespace MissionPlanner
                 {
                     name = File.ReadAllLines(Settings.GetRunningDirectory() + "logo.txt",
                         Encoding.UTF8)[0];
-                    Settings.FileName = RemoveInvalidChars(name) + ".xml";
                 }
             }
             catch
             {
             }
+
+            MissionPlanner.Aerostar.AerostarBranding.MigrateLegacySettings();
+            MissionPlanner.Aerostar.AerostarBranding.ApplyFirstRunDefaults();
 
             if (File.Exists(Settings.GetRunningDirectory() + "logo.png"))
                 Logo = new Bitmap(Settings.GetRunningDirectory() + "logo.png");

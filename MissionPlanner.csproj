@@ -1196,4 +1196,12 @@
   <ItemGroup>
     <EmbeddedResource Include="Plugins\example23-switch.resx" />
   </ItemGroup>
+  <!-- Aerostar: branding files go next to MissionPlanner.exe, where Mission Planner looks for logo.png, logo2.png,
+       icon.png, light_*_icon.png and *.mpsystheme (see Aerostar\AerostarBranding.cs). -->
+  <ItemGroup>
+    <None Update="Aerostar\Branding\*">
+      <Link>%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
 </Project>
