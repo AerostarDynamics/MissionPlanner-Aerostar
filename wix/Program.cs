@@ -58,6 +58,14 @@ namespace wix
 
         static string basedir = "";
 
+        // Aerostar: product identity. Own UpgradeCode, so the Aerostar MSI installs beside the public Mission Planner
+        // and neither replaces the other on install or upgrade (the 2025 Aerostar build reused the public code).
+        const string ProductName = "Aerostar Mission Planner";
+        const string Manufacturer = "Aerostar Dynamics";
+        const string UpgradeCode = "{F73D4FAB-BF13-416D-B542-21448F8DBF5A}";
+        const string InstallDirComponentGuid = "{CEE434ED-68E8-45BF-A820-BDF4021E8C90}";
+        const string StartMenuFolder = "Aerostar Dynamics";
+
         [STAThread]
         static void Main(string[] args)
         {
@@ -74,7 +82,7 @@ namespace wix
             //Path.GetDirectoryName(Application.ExecutablePath) + Path.DirectorySeparatorChar+ 
             string file = "installer.wxs";
 
-            string outputfilename = "MissionPlanner";
+            string outputfilename = "AerostarMissionPlanner";
 
             if (args.Length > 1)
                 outputfilename = args[1];
@@ -88,9 +96,9 @@ namespace wix
 
             header(fvi.ProductVersion);
 
-            sw.WriteLine("    <Directory Id=\"INSTALLDIR\" Name=\"Mission Planner\">");
+            sw.WriteLine("    <Directory Id=\"INSTALLDIR\" Name=\"" + ProductName + "\">");
 
-            sw.WriteLine(@"        <Component Id=""InstallDirPermissions"" Guid=""{525389D7-EB3C-4d77-A5F6-A285CF99437D}"" KeyPath=""yes""> 
+            sw.WriteLine(@"        <Component Id=""InstallDirPermissions"" Guid=""" + InstallDirComponentGuid + @""" KeyPath=""yes""> 
             <CreateFolder> 
                 <Permission User=""Everyone"" GenericAll=""yes"" /> 
             </CreateFolder>
@@ -161,11 +169,11 @@ namespace wix
 <Wix xmlns=""http://schemas.microsoft.com/wix/2006/wi"" xmlns:netfx=""http://schemas.microsoft.com/wix/NetFxExtension"" xmlns:difx=""http://schemas.microsoft.com/wix/DifxAppExtension"" xmlns:iis='http://schemas.microsoft.com/wix/IIsExtension' >
 
 
-    <Product Id=""" + newid + @""" Name=""Mission Planner"" Language=""1033"" Version=""" + version + @""" Manufacturer=""Michael Oborne"" UpgradeCode=""{625389D7-EB3C-4d77-A5F6-A285CF99437D}"">
+    <Product Id=""" + newid + @""" Name=""" + ProductName + @""" Language=""1033"" Version=""" + version + @""" Manufacturer=""" + Manufacturer + @""" UpgradeCode=""" + UpgradeCode + @""">
 
-    <Package Description=""Mission Planner Installer"" Comments=""Mission Planner Installer"" Manufacturer=""Michael Oborne"" InstallerVersion=""200"" Compressed=""yes"" />
+    <Package Description=""" + ProductName + @" Installer"" Comments=""" + ProductName + @" Installer"" Manufacturer=""" + Manufacturer + @""" InstallerVersion=""200"" Compressed=""yes"" />
 
-    <Upgrade Id=""{625389D7-EB3C-4d77-A5F6-A285CF99437D}"">
+    <Upgrade Id=""" + UpgradeCode + @""">
         <UpgradeVersion OnlyDetect=""yes"" Minimum=""" + version + @""" Property=""NEWERVERSIONDETECTED"" IncludeMinimum=""no"" />
         <UpgradeVersion OnlyDetect=""no"" Minimum=""0.0.0"" Maximum=""" + version + @""" Property=""OLDERVERSIONBEINGUPGRADED"" IncludeMinimum=""yes"" IncludeMaximum=""yes"" />
     </Upgrade>
@@ -195,7 +203,7 @@ namespace wix
         </Directory>
 
         <Directory Id=""ProgramMenuFolder"">
-            <Directory Id=""ApplicationProgramsFolder"" Name=""Mission Planner"" />
+            <Directory Id=""ApplicationProgramsFolder"" Name=""" + StartMenuFolder + @""" />
         </Directory>
     </Directory>
 
@@ -250,8 +258,8 @@ namespace wix
 
     <DirectoryRef Id=""ApplicationProgramsFolder"">
         <Component Id=""ApplicationShortcut"" Guid=""*"">
-            <Shortcut Id=""ApplicationStartMenuShortcut10"" Name=""Mission Planner"" Description=""Mission Planner"" Target=""[INSTALLDIR]MissionPlanner.exe"" WorkingDirectory=""INSTALLDIR"" />
-            <Shortcut Id=""UninstallProduct"" Name=""Uninstall Mission Planner"" Description=""Uninstalls My Application"" Target=""[System64Folder]msiexec.exe"" Arguments=""/x [ProductCode]"" />
+            <Shortcut Id=""ApplicationStartMenuShortcut10"" Name=""" + ProductName + @""" Description=""" + ProductName + @""" Target=""[INSTALLDIR]MissionPlanner.exe"" WorkingDirectory=""INSTALLDIR"" />
+            <Shortcut Id=""UninstallProduct"" Name=""Uninstall " + ProductName + @""" Description=""Uninstalls My Application"" Target=""[System64Folder]msiexec.exe"" Arguments=""/x [ProductCode]"" />
             <RegistryValue Root=""HKCU"" Key=""Software\MichaelOborne\MissionPlanner"" Name=""installed"" Type=""integer"" Value=""1"" KeyPath=""yes"" />
 
             <RemoveFolder Id=""dltApplicationProgramsFolder"" Directory=""ApplicationProgramsFolder"" On=""uninstall"" />
@@ -261,7 +269,7 @@ namespace wix
     </DirectoryRef>
 
 
-    <Feature Id=""Complete"" Title=""Mission Planner"" Level=""1"">
+    <Feature Id=""Complete"" Title=""" + ProductName + @""" Level=""1"">
         <ComponentRef Id=""InstallDirPermissions"" />
 ";
             sw.WriteLine(data);
@@ -288,7 +296,7 @@ namespace wix
             Event=""DoAction"" 
             Value=""LaunchApplication"">WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 and NOT Installed</Publish>
     </UI>
-    <Property Id=""WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT"" Value=""Launch Mission Planner"" />
+    <Property Id=""WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT"" Value=""Launch " + ProductName + @""" />
 
     <!-- Step 3: Include the custom action -->
     <Property Id=""WixShellExecTarget"" Value=""[#" + mainexeid + @"]"" />

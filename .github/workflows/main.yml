@@ -36,12 +36,43 @@ jobs:
           7z a -tzip ..\..\..\MissionPlannerBeta.zip *
           cd ..
           .\md5sum.exe net461 > ..\..\checksums.txt
-          
+
       - uses: actions/upload-artifact@v4
         with:
           name: MissionPlannerBeta
           path: bin\Release\net461
-          
+
+      # Aerostar: MSI installer "Aerostar Mission Planner" (own UpgradeCode, see wix\Program.cs) on every build of the
+      # Aerostar fork. Runs only the candle/light lines of the generated create.bat (the rest pauses and uploads to the
+      # Mission Planner author's server).
+      - name: Aerostar MSI installer
+        if: ${{ github.repository == 'AerostarDynamics/MissionPlanner-Aerostar' }}
+        shell: pwsh
+        run: |
+          if (-not $env:WIX) {
+            choco install wixtoolset --no-progress -y
+            $env:WIX = (Get-ChildItem "${env:ProgramFiles(x86)}" -Directory -Filter "WiX Toolset v3*" | Sort-Object Name | Select-Object -Last 1).FullName + "\"
+          }
+          Write-Host "WiX: $env:WIX"
+          cd Msi
+          .\net472\wix.exe ..\bin\Release\net461\
+          Get-Content create.bat | Select-Object -Index 0,1,2 | Set-Content build-msi.bat
+          cmd /c build-msi.bat
+          $msi = Get-ChildItem AerostarMissionPlanner-*.msi | Select-Object -First 1
+          if (-not $msi) { throw "MSI was not created" }
+          $hash = (Get-FileHash $msi.FullName -Algorithm SHA256).Hash.ToLower()
+          "$hash  $($msi.Name)" | Set-Content ($msi.FullName -replace '\.msi$', '.sha256') -Encoding ascii
+          Write-Host "Built $($msi.Name) ($([math]::Round($msi.Length / 1MB)) MB) sha256 $hash"
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ github.repository == 'AerostarDynamics/MissionPlanner-Aerostar' }}
+        with:
+          name: AerostarMissionPlanner-MSI
+          path: |
+            Msi\AerostarMissionPlanner-*.msi
+            Msi\AerostarMissionPlanner-*.sha256
+          if-no-files-found: error
+
       - uses: "marvinpinto/action-automatic-releases@v1.2.1"
         if: ${{ github.ref == 'refs/tags/beta' }}
         with:
@@ -69,6 +100,8 @@ jobs:
             checksums.txt
             version.txt
             ChangeLog.txt
+            Msi/AerostarMissionPlanner-*.msi
+            Msi/AerostarMissionPlanner-*.sha256
 
 
   buildDebug:
