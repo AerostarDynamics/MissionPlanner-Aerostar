@@ -64,6 +64,9 @@
     <Compile Include="..\ExtLibs\Controls\CustomMessageBox.cs">
       <Link>Linked\CustomMessageBox.cs</Link>
     </Compile>
+    <Compile Include="..\ExtLibs\Controls\DialogOwner.cs">
+      <Link>Linked\DialogOwner.cs</Link>
+    </Compile>
     <Compile Include="..\ExtLibs\Controls\MyButton.cs">
       <Link>Linked\MyButton.cs</Link>
       <SubType>Component</SubType>
