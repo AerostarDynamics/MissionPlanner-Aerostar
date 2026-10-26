@@ -6,6 +6,15 @@ jobs:
     name: Build Release
     runs-on: windows-latest
 
+    # Aerostar: id-token lets the aerostar branch of the Aerostar fork log in to Google Cloud (code signing + portal),
+    # keyless through workload identity. contents: write is what the release steps need.
+    permissions:
+      contents: write
+      id-token: write
+
+    env:
+      AEROSTAR_RELEASE: ${{ github.repository == 'AerostarDynamics/MissionPlanner-Aerostar' && github.ref == 'refs/heads/aerostar' && github.event_name != 'pull_request' }}
+
     steps:
       - uses: actions/checkout@v2
         with:
@@ -64,6 +73,54 @@ jobs:
           "$hash  $($msi.Name)" | Set-Content ($msi.FullName -replace '\.msi$', '.sha256') -Encoding ascii
           Write-Host "Built $($msi.Name) ($([math]::Round($msi.Length / 1MB)) MB) sha256 $hash"
 
+      # Aerostar: sign the MSI as "Aerostar Dynamics Inc." (EV certificate, key in Google Cloud KMS, project
+      # windows-code-signing) - the same steps as AerostarDynamics/Sign-Windows-Install's sign-file action, which a
+      # public repository cannot call. Aerostar release builds only (aerostar branch of the Aerostar fork).
+      - name: Aerostar - install Google KMS CNG provider
+        if: ${{ env.AEROSTAR_RELEASE == 'true' }}
+        shell: pwsh
+        run: |
+          $kmsDir = Join-Path "${{ runner.temp }}" "kms"
+          New-Item -ItemType Directory -Path $kmsDir -Force | Out-Null
+          $zipPath = Join-Path $kmsDir "kmscng.zip"
+          Invoke-WebRequest -Uri "${{ vars.KMS_CNG_PROVIDER_DOWNLOAD }}" -OutFile $zipPath
+          $actual = (Get-FileHash -Path $zipPath -Algorithm SHA256).Hash
+          if ($actual -ine "${{ vars.KMS_CNG_PROVIDER_DOWNLOAD_SHA }}") { throw "KMS CNG zip hash mismatch: $actual" }
+          Expand-Archive -Path $zipPath -DestinationPath $kmsDir -Force
+          $msi = Get-ChildItem -Path $kmsDir -Filter "*.msi" -Recurse | Select-Object -First 1
+          if (-not $msi) { throw "No KMS CNG MSI in $zipPath" }
+          # No /l logging here: it makes this install fail silently (Dave Howie's note).
+          $install = Start-Process -FilePath "msiexec.exe" -ArgumentList @("/i", $msi.FullName, "/quiet", "/norestart") -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw "KMS CNG install failed with exit code $($install.ExitCode)" }
+
+      - name: Aerostar - log in to Google Cloud for code signing
+        if: ${{ env.AEROSTAR_RELEASE == 'true' }}
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: ${{ vars.WINDOWS_SIGNING_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.WINDOWS_SIGNING_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.WINDOWS_SIGNING_SERVICE_ACCOUNT }}@${{ vars.WINDOWS_SIGNING_PROJECT_ID }}.iam.gserviceaccount.com
+          token_format: id_token
+          id_token_audience: ${{ vars.WINDOWS_SIGNING_PROJECT_ID }}
+          id_token_include_email: true
+          request_reason: ${{ github.workflow_ref }}
+
+      - name: Aerostar - sign MSI
+        if: ${{ env.AEROSTAR_RELEASE == 'true' }}
+        shell: pwsh
+        run: |
+          & .\Aerostar\Deploy\add-signtool.ps1
+          if ($LASTEXITCODE -ne 0) { throw "signtool not found" }
+          $msi = Get-ChildItem Msi\AerostarMissionPlanner-*.msi | Select-Object -First 1
+          signtool.exe sign /v /fd sha256 /tr "${{ vars.CODE_SIGNING_TIMESTAMP_SERVER_URL }}" /td sha256 /f Aerostar\Deploy\aerostar-dynamics-inc.crt /csp "Google Cloud KMS Provider" /kc "${{ vars.CODE_SIGNING_PRIVATE_KEY_CONTAINER }}" $msi.FullName
+          if ($LASTEXITCODE -ne 0) { throw "signtool sign failed" }
+          signtool.exe verify /pa /v $msi.FullName
+          if ($LASTEXITCODE -ne 0) { throw "signature does not verify" }
+          # The .sha256 written before signing is stale now.
+          $hash = (Get-FileHash $msi.FullName -Algorithm SHA256).Hash.ToLower()
+          "$hash  $($msi.Name)" | Set-Content ($msi.FullName -replace '\.msi$', '.sha256') -Encoding ascii
+          Write-Host "Signed $($msi.Name) sha256 $hash"
+
       - uses: actions/upload-artifact@v4
         if: ${{ github.repository == 'AerostarDynamics/MissionPlanner-Aerostar' }}
         with:
@@ -102,6 +159,89 @@ jobs:
             ChangeLog.txt
             Msi/AerostarMissionPlanner-*.msi
             Msi/AerostarMissionPlanner-*.sha256
+
+      # Aerostar: publish to the customer portal as the new BETA (Google Cloud Storage bucket + portal back end), once
+      # per version in Aerostar/Deploy/portal-version.txt (format 1.3.83.01, the back end's rule). To put a new build on
+      # the portal, raise that number; a git tag portal-<version> marks a version as already published. Promote the
+      # beta to GA with the "Aerostar MSI GA" workflow.
+      - name: Aerostar - portal version
+        id: portal
+        if: ${{ env.AEROSTAR_RELEASE == 'true' }}
+        shell: bash
+        run: |
+          version=$(tr -d ' \r\n' < Aerostar/Deploy/portal-version.txt)
+          msi=$(ls Msi/AerostarMissionPlanner-*.msi | head -n 1)
+          build=$(basename "$msi" .msi); build=${build#AerostarMissionPlanner-}
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "msi=$msi" >> "$GITHUB_OUTPUT"
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+          if git ls-remote --exit-code --tags origin "refs/tags/portal-$version" > /dev/null; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Portal version $version was already published (tag portal-$version). Raise Aerostar/Deploy/portal-version.txt to put this build on the portal."
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "Publishing build $build to the portal as $version"
+          fi
+
+      - name: Aerostar - prepare portal files
+        if: ${{ steps.portal.outputs.publish == 'true' }}
+        shell: bash
+        run: |
+          python Aerostar/Deploy/create-portal-files.py \
+            --portal-version "${{ steps.portal.outputs.version }}" \
+            --msi "${{ steps.portal.outputs.msi }}" \
+            --build-version "${{ steps.portal.outputs.build }}" \
+            --repository "${{ github.repository }}" \
+            --ref "${{ github.ref_name }}" \
+            --output-path portal
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ steps.portal.outputs.publish == 'true' }}
+        with:
+          name: AerostarMissionPlanner-portal-${{ steps.portal.outputs.version }}
+          path: portal
+          if-no-files-found: error
+
+      - name: Aerostar - log in to Google Cloud for the portal
+        id: portal_auth
+        if: ${{ steps.portal.outputs.publish == 'true' }}
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: ${{ vars.MSI_DEPLOYMENT_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.MSI_DEPLOYMENT_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.MSI_DEPLOYMENT_SERVICE_ACCOUNT }}@${{ vars.MSI_DEPLOYMENT_PROJECT_ID }}.iam.gserviceaccount.com
+          token_format: id_token
+          id_token_audience: ${{ vars.MSI_DEPLOYMENT_PROJECT_ID }}
+          id_token_include_email: true
+          request_reason: ${{ github.workflow_ref }}
+
+      - name: Aerostar - upload to the portal bucket
+        if: ${{ steps.portal.outputs.publish == 'true' }}
+        uses: google-github-actions/upload-cloud-storage@v2
+        with:
+          path: portal
+          destination: ${{ vars.MSI_DEPLOYMENT_DESTINATION }}
+          parent: false
+          process_gcloudignore: false
+
+      - name: Aerostar - register the beta with the portal
+        if: ${{ steps.portal.outputs.publish == 'true' }}
+        shell: bash
+        run: |
+          curl --fail-with-body -sS -X PUT -H "Content-Length: 0" \
+            -H "Authorization: Bearer ${{ steps.portal_auth.outputs.id_token }}" \
+            -H "X-AeroStar-Svc-Requestor: ${{ github.workflow_ref }}" \
+            "${{ vars.MSI_DEPLOYMENT_BACKEND_SERVICE }}/beta/${{ steps.portal.outputs.version }}"
+          echo
+          echo "::notice::Portal beta is now ${{ steps.portal.outputs.version }} (build ${{ steps.portal.outputs.build }})"
+
+      - name: Aerostar - mark the portal version as published
+        if: ${{ steps.portal.outputs.publish == 'true' }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/${{ github.repository }}/git/refs" -f ref="refs/tags/portal-${{ steps.portal.outputs.version }}" -f sha="${{ github.sha }}"
 
 
   buildDebug:

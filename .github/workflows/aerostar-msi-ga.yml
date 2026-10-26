@@ -1,0 +1,40 @@
+name: Aerostar MSI GA
+# Aerostar Dynamics: promote the Aerostar Mission Planner version that is BETA on the customer portal to GA
+# (general availability). Based on Dave Howie's deploy-ga-msi.yml. Run it by hand (Actions -> Aerostar MSI GA ->
+# Run workflow, branch aerostar) after the beta has been checked. The portal back end moves the current beta to GA;
+# with no beta it does nothing.
+on:
+  workflow_dispatch:
+
+jobs:
+  promote:
+    name: Promote portal beta to GA
+    if: ${{ github.repository == 'AerostarDynamics/MissionPlanner-Aerostar' && github.ref == 'refs/heads/aerostar' }}
+    runs-on: ubuntu-latest
+
+    # Needed for logging in to Google Cloud (workload identity, no stored key).
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Log in to Google Cloud for the portal
+        id: portal_auth
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: ${{ vars.MSI_DEPLOYMENT_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.MSI_DEPLOYMENT_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.MSI_DEPLOYMENT_SERVICE_ACCOUNT }}@${{ vars.MSI_DEPLOYMENT_PROJECT_ID }}.iam.gserviceaccount.com
+          token_format: id_token
+          id_token_audience: ${{ vars.MSI_DEPLOYMENT_PROJECT_ID }}
+          id_token_include_email: true
+          request_reason: ${{ github.workflow_ref }}
+
+      - name: Promote beta to GA
+        run: |
+          curl --fail-with-body -sS -X PUT -H "Content-Length: 0" \
+            -H "Authorization: Bearer ${{ steps.portal_auth.outputs.id_token }}" \
+            -H "X-AeroStar-Svc-Requestor: ${{ github.workflow_ref }}" \
+            "${{ vars.MSI_DEPLOYMENT_BACKEND_SERVICE }}/ga"
+          echo
+          echo "::notice::Portal beta promoted to GA"
