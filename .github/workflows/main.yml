@@ -223,6 +223,8 @@ jobs:
           destination: ${{ vars.MSI_DEPLOYMENT_DESTINATION }}
           parent: false
           process_gcloudignore: false
+          # Store the exact signed MSI (the action gzips uploads by default).
+          gzip: false
 
       - name: Aerostar - register the beta with the portal
         if: ${{ steps.portal.outputs.publish == 'true' }}
