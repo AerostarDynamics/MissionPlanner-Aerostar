@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net472</TargetFramework>
-    <ApplicationIcon>mpdesktop.ico</ApplicationIcon>
+    <ApplicationIcon>Aerostar\aerostar.ico</ApplicationIcon>
     <OutputType>Exe</OutputType>
     <StartupObject>MissionPlanner.Program</StartupObject>
     <Authors>Michael Oborne</Authors>
